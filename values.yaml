@@ -1,0 +1,56 @@
+Master:
+  Image: "jenkins/jenkins"
+  ImageTag: "lts"
+  InstallPlugins:
+    - kubernetes:1.1
+    - workflow-aggregator:2.5
+    - credentials-binding:1.13
+    - git:3.6.4
+  InitScripts:
+    - |
+      import jenkins.model.Jenkins
+      import com.cloudbees.plugins.credentials.CredentialsProvider
+      import com.cloudbees.plugins.credentials.CredentialsScope
+      import com.cloudbees.plugins.credentials.domains.Domain
+      import org.csanchez.jenkins.plugins.kubernetes.ServiceAccountCredential
+
+      def instance = Jenkins.getInstance()
+      def kubeCloud = instance.clouds[0]
+
+      def id = kubeCloud.getJenkinsUrl().minus('http://').minus(':8080')
+      def description = 'Kubernetes Service Account Credentials'
+
+      def globalDomain = Domain.global()
+      def credentialsStore =
+      Jenkins.instance.getExtensionList(
+        'com.cloudbees.plugins.credentials.SystemCredentialsProvider'
+      )[0].getStore()
+
+      def credsScope = CredentialsScope.GLOBAL
+
+      ServiceAccountCredential credentials = new ServiceAccountCredential(credsScope, id, description)
+      credentialsStore.addCredentials(globalDomain, credentials)
+
+      kubeCloud.setSkipTlsVerify(true)
+      kubeCloud.setCredentialsId(id)
+
+      instance.save()
+
+    - |
+      import jenkins.model.Jenkins
+      import hudson.plugins.git.GitSCM
+      import org.jenkinsci.plugins.workflow.job.WorkflowJob
+      import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition
+
+      def instance = Jenkins.instance
+
+      WorkflowJob job = Jenkins.instance.createProject(WorkflowJob, 'alpine-oracle-java-8.build')
+      def definition = new CpsScmFlowDefinition(new GitSCM('https://github.com/ibelikov/aks-jenkins-demo'), 'Jenkinsfile')
+
+      job.definition = definition
+
+      instance.save()
+      instance.reload()
+
+rbac:
+  install: true
